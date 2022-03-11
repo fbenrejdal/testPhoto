@@ -2,6 +2,7 @@ package com.example.testphoto;
 
 import android.content.ContentUris;
 import android.content.Context;
+import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -20,42 +21,50 @@ import androidx.navigation.fragment.NavHostFragment;
 import com.example.testphoto.databinding.FragmentFirstBinding;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.util.Random;
 
 public class FirstFragment extends Fragment {
 
     private FragmentFirstBinding binding;
-    public Bitmap openPhoto(long contactId) {
-        Uri contactUri = ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, contactId);
-        Uri photoUri = Uri.withAppendedPath(contactUri, ContactsContract.Contacts.Photo.CONTENT_DIRECTORY);
-        Cursor cursor = getContext().getContentResolver().query(photoUri,
-                new String[] {ContactsContract.Contacts.Photo.PHOTO}, null, null, null);
-        if (cursor == null) {
+    public Bitmap openPhoto(String contactId) {
+        Bitmap bitmap;
+
+        try {
+            AssetFileDescriptor fd =
+                    getContext().getContentResolver().openAssetFileDescriptor(Uri.parse(contactId), "r");
+            System.out.println("OpenPhoto returning fd "+fd);
+            bitmap=BitmapFactory.decodeStream(fd.createInputStream());
+            fd.close();
+            return bitmap;
+        } catch (IOException e) {
+            System.out.println("OpenPhoto return Null");
             return null;
         }
-        try {
-            if (cursor.moveToFirst()) {
-                byte[] data = cursor.getBlob(0);
-                if (data != null) {
-                    return BitmapFactory.decodeStream(new ByteArrayInputStream(data));
-                }
-            }
-        } finally {
-            cursor.close();
-        }
-        return null;
-
     }
-    public static long getContactIDFromNumber(String contactNumber, Context context) {
-        String UriContactNumber = Uri.encode(contactNumber);
-        long phoneContactID = new Random().nextInt();
-        /*Cursor contactLookupCursor = context.getContentResolver().query(Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, UriContactNumber),
-                new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME, ContactsContract.PhoneLookup._ID}, null, null, null);*/
-        Cursor contactLookupCursor = context.getContentResolver().query(Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, UriContactNumber),
-                new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME, ContactsContract.PhoneLookup._ID}, null, null, null);while (contactLookupCursor.moveToNext()) {
-            phoneContactID = contactLookupCursor.getLong(contactLookupCursor.getColumnIndexOrThrow(ContactsContract.PhoneLookup._ID));
+    public long getContactIDFromNumber(Context context, View view) {
+        long phoneContactID = 0;
+        Uri contactNumberUri=ContactsContract.Data.CONTENT_URI;
+
+        Cursor contactLookupCursor = context.getContentResolver().query(contactNumberUri, null, ContactsContract.Data.MIMETYPE + "= 'vnd.android.cursor.item/phone_v2'", null, null);
+        ImageView myImageview = (ImageView) view.findViewById(R.id.imageView);
+        while (contactLookupCursor.moveToNext()) {
+            phoneContactID = contactLookupCursor.getLong(contactLookupCursor.getColumnIndexOrThrow(ContactsContract.Data._ID));
+            String mimeType = contactLookupCursor.getString(contactLookupCursor.getColumnIndexOrThrow(ContactsContract.Data.MIMETYPE));
+            String phoneNumber = contactLookupCursor.getString(contactLookupCursor.getColumnIndexOrThrow(ContactsContract.CommonDataKinds.Phone.DATA1));
+            String photo=contactLookupCursor.getString(contactLookupCursor.getColumnIndexOrThrow(ContactsContract.Data.PHOTO_URI));
+
             System.out.println("phoneContactID "+phoneContactID);
-            System.out.println("UriContactNumber "+UriContactNumber);
+            System.out.println("minetype "+mimeType);
+            System.out.println("PhoneNumber "+phoneNumber);
+            System.out.println("PhotoID ("+photo+")");
+
+            if (photo !=null) {
+                Bitmap bitmap = openPhoto(photo);
+                if (bitmap != null)
+                    myImageview.setImageBitmap(bitmap);
+            }
         }
         contactLookupCursor.close();
 
@@ -75,18 +84,8 @@ public class FirstFragment extends Fragment {
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        binding.buttonFirst.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                NavHostFragment.findNavController(FirstFragment.this)
-                        .navigate(R.id.action_FirstFragment_to_SecondFragment);
-            }
-        });
-        ImageView myImageview = (ImageView) view.findViewById(R.id.imageView);
-
-        Bitmap bitmap = openPhoto(getContactIDFromNumber("21300",getContext()));
-        myImageview.setImageBitmap(bitmap);
-
+        System.out.println("Calling getContactIDFromNumber");
+        getContactIDFromNumber(getContext(),view);
     }
 
     @Override
